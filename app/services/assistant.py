@@ -39,7 +39,9 @@ class AssistantService:
             conversation_id=conversation_id,
             status="success"
         )
+assistant_service = AssistantService()
 
+# 
 # --------------------------v0--------------------------------
 # import uuid
 

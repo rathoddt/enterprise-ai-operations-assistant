@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends
 
 from app.models.schemas import (
@@ -5,8 +6,9 @@ from app.models.schemas import (
     ChatResponse
 )
 
-from app.services.assistant import assistant_service
-from app.api.dependencies import get_assistant_servic
+from app.services.assistant import AssistantService
+from app.api.dependencies import get_assistant_service
+
 
 router = APIRouter(
     prefix="/assistant",
@@ -22,10 +24,4 @@ async def chat(
     request: ChatRequest,
     assistant: AssistantService = Depends(get_assistant_service)
 ):
-
-    # return await assistant_service.process_request(
-    #     request
-    # )
-
-    # return await service.process_request(request)
     return await assistant.process_request(request)

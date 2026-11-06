@@ -29,11 +29,13 @@ class ChatResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-
     status: str
-
     application: str
-
     version: str
-
     environment: str
+
+
+class ErrorResponse(BaseModel):
+    error_code: str
+    message: str
+    request_id: str | None = None
