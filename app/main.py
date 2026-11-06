@@ -5,6 +5,10 @@ from app.core.logging import setup_logging, get_logger
 
 from app.api.routes import health, assistant
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+from app.core.exceptions import ApplicationError
 
 setup_logging()
 
@@ -20,6 +24,25 @@ app = FastAPI(
     debug=settings.debug
 )
 
+@app.exception_handler(ApplicationError)
+async def application_error_handler(
+    request: Request,
+    exc: ApplicationError
+):
+
+    logger.error(
+        "Application error: %s",
+        exc.code
+    )
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error_code": exc.code,
+            "message": "The requested service is temporarily unavailable.",
+            "request_id": None
+        }
+    )
 
 app.include_router(
     health.router,
