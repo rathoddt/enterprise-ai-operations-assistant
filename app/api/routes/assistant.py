@@ -6,9 +6,9 @@ from app.models.schemas import (
     ChatResponse
 )
 
-from app.services.assistant import AssistantService
 from app.api.dependencies import get_assistant_service
-
+from app.models.schemas import ChatRequest, ChatResponse
+from app.services.assistant import AssistantService
 
 router = APIRouter(
     prefix="/assistant",

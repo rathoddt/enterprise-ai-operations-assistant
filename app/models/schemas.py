@@ -5,6 +5,7 @@ from typing import Literal
 class ChatRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
+    provider: Literal["openai", "anthropic"] = "openai"
 
     question: str = Field(
         min_length=3,
