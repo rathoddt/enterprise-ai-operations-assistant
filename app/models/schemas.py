@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
-
+from app.llm.schemas import LLMMetadata
 
 class ChatRequest(BaseModel):
 
@@ -16,18 +16,23 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+# class ChatResponse(BaseModel):
+
+#     answer: str
+
+#     conversation_id: str
+
+#     status: Literal[
+#         "success",
+#         "pending",
+#         "error"
+#     ] = "success"
+
 class ChatResponse(BaseModel):
-
     answer: str
-
     conversation_id: str
-
-    status: Literal[
-        "success",
-        "pending",
-        "error"
-    ] = "success"
-
+    status: Literal["success", "pending", "error"]
+    metadata: LLMMetadata | None = None
 
 class HealthResponse(BaseModel):
     status: str

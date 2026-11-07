@@ -1,5 +1,13 @@
 from fastapi.testclient import TestClient
 
+from unittest.mock import AsyncMock
+
+from app.main import app
+from app.api.dependencies import get_assistant_service
+from app.llm.registry import LLMProviderRegistry
+from app.services.assistant import AssistantService
+from app.llm.schemas import LLMResult
+
 from app.main import app
 
 client = TestClient(app)
@@ -30,22 +38,71 @@ def test_health_endpoint():
 
 
 def test_chat_endpoint():
+    mock_provider = AsyncMock()
 
-    payload = {
-        "question": "What is our payment policy?"
-    }
+    # mock_provider.generate.return_value = (
+    #     "Payment policy retrieved successfully."
+    # )
 
-    response = client.post(
-        "/api/v1/assistant/chat",
-        json=payload
+    mock_provider.generate.return_value = LLMResult(
+            answer="Mock AI response",
+            provider="openai",
+            model="gpt-5",
+            input_tokens=10,
+            output_tokens=20,
+            request_id="mock-request-123",
+            response_id="mock-response-456",
+            status="success",
+        )
+    
+    registry = LLMProviderRegistry({
+        "openai": mock_provider
+    })
+
+    mock_service = AssistantService(
+        provider_registry=registry
     )
 
-    assert response.status_code == 200
+    app.dependency_overrides[get_assistant_service] = (
+        lambda: mock_service
+    )
 
-    data = response.json()
+    try:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "question": "What is our payment policy?",
+                "provider": "openai"
+            }
+        )
 
-    assert data["status"] == "success"
-    assert data["conversation_id"] is not None
+        assert response.status_code == 200
+
+        assert response.json()["answer"] == (
+            "Mock AI response"
+        )
+
+        assert response.json()["status"] == "success"
+
+    finally:
+        app.dependency_overrides.clear()
+
+# ---------------- v0 ------------------
+    # payload = {
+    #     "question": "What is our payment policy?"
+    # }
+
+    # response = client.post(
+    #     "/api/v1/assistant/chat",
+    #     json=payload
+    # )
+
+    # assert response.status_code == 200
+
+    # data = response.json()
+
+    # assert data["status"] == "success"
+    # assert data["conversation_id"] is not None
 
 
 def test_chat_validation():
