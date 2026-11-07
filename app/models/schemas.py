@@ -2,6 +2,12 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal
 from app.llm.schemas import LLMMetadata
 
+DEFAULT_SYSTEM_PROMPT = (
+    "Provide a concise, well-structured answer. "
+    "Use approximately 400–600 words unless the question "
+    "requires more detail. Avoid unnecessary repetition."
+)
+
 class ChatRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
@@ -11,6 +17,11 @@ class ChatRequest(BaseModel):
         min_length=3,
         max_length=2000,
         description="User question"
+    )
+
+    system_prompt: str = Field(
+        default=DEFAULT_SYSTEM_PROMPT,
+        max_length=8000,
     )
 
     conversation_id: str | None = None

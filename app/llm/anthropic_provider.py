@@ -17,15 +17,16 @@ class AnthropicProvider:
             base_url=endpoint,
         )
 
-    async def generate(self, prompt: str) -> LLMResult:
+    async def generate(self, system_prompt: str, user_prompt: str,) -> LLMResult:
 
         response = await self.client.messages.create(
             model=self.deployment,
-            max_tokens=1000,
+            system=system_prompt,
+            max_tokens=1500,
             messages=[
                 {
                     "role": "user",
-                    "content": prompt,
+                    "content": user_prompt,
                 }
             ],
         )

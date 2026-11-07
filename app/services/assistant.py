@@ -27,7 +27,11 @@ class AssistantService:
         start_time = time.perf_counter()
 
         try:
-            result = await provider.generate(request.question)
+            # result = await provider.generate(request.question)
+            result = await provider.generate(
+                system_prompt=request.system_prompt,
+                user_prompt=request.question,
+            )
 
             latency_ms = round(
                 (time.perf_counter() - start_time) * 1000,

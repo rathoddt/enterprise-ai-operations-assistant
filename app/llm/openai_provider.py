@@ -16,11 +16,13 @@ class OpenAIProvider:
             api_key=api_key,
         )
 
-    async def generate(self, prompt: str) -> LLMResult:
+    async def generate(self, system_prompt: str, user_prompt: str) -> LLMResult:
 
         response = await self.client.responses.create(
             model=self.deployment,
-            input=prompt,
+            instructions=system_prompt,
+            input=user_prompt,
+            max_output_tokens=1500,
         )
 
         usage = response.usage
