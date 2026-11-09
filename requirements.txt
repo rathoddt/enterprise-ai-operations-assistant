@@ -72,3 +72,6 @@ opentelemetry-proto==1.45.2
 opentelemetry-sdk==1.45.2
 opentelemetry-semantic-conventions==0.66b2
 wrapt==2.5.2
+tavily-python==0.8.5
+tiktoken==0.14.0
+regex==2026.11.9

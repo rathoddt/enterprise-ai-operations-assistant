@@ -51,7 +51,12 @@ class OpenAIProvider:
             output_tokens=usage.output_tokens if usage else None,
             request_id=getattr(response, "_request_id", None),
             response_id=response.id,
-            status="success",
+            # status="success",
+            status=(
+                    "success"
+                    if response.status == "completed"
+                    else "error"
+                ),
             finish_reason=finish_reason,
             is_truncated=is_truncated,     
             incomplete_reason=incomplete_reason,       

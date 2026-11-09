@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = None
     langfuse_public_key: str | None = None
     langfuse_base_url: str = "http://localhost:3000"
+
+    tavily_api_key: str | None = None
     
 
 

@@ -1,6 +1,4 @@
 from app.llm.provider import LLMProvider
-
-
 class LLMProviderRegistry:
 
     def __init__(self, providers: dict[str, LLMProvider]):
