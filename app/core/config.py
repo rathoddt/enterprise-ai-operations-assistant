@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     llm_max_input_tokens: int = 10000
     llm_max_output_tokens: int = 1500
-    
+
     foundry_openai_endpoint: str | None = None
     foundry_openai_api_key: str | None = None
     foundry_openai_deployment: str = "gpt-5"
@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     foundry_anthropic_endpoint: str | None = None
     foundry_anthropic_api_key: str | None = None
     foundry_anthropic_deployment: str = "claude-sonnet-5-5"    
+
+    # Langfuse Observability
+    langfuse_secret_key: str | None = None
+    langfuse_public_key: str | None = None
+    langfuse_base_url: str = "http://localhost:3000"
     
 
 

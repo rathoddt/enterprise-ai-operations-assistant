@@ -10,9 +10,29 @@ from fastapi.responses import JSONResponse
 
 from app.core.exceptions import ApplicationError
 
+from contextlib import asynccontextmanager
+from app.core.observability import get_langfuse_client
+
 setup_logging()
 
 logger = get_logger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Application startup")
+
+    yield
+
+    logger.info("Application shutdown: flushing Langfuse events")
+
+    langfuse = get_langfuse_client()
+
+    if langfuse:
+        try:
+            langfuse.flush()
+            logger.info("Langfuse events flushed successfully.")
+        except Exception:
+            logger.exception("Failed to flush Langfuse events.")
 
 app = FastAPI(
     title=settings.app_name,
@@ -21,7 +41,8 @@ app = FastAPI(
         "Enterprise AI Operations Assistant "
         "API foundation"
     ),
-    debug=settings.debug
+    debug=settings.debug,
+    lifespan=lifespan,
 )
 
 @app.exception_handler(ApplicationError)

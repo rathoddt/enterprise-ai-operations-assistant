@@ -13,10 +13,6 @@ def test_assistant_service_with_mock_llm():
 
     mock_provider = AsyncMock()
 
-    # mock_provider.generate.return_value = (
-    #     "Payment policy retrieved successfully."
-    # )
-
     mock_provider.generate.return_value = LLMResult(
             answer="Mock AI response",
             provider="openai",
@@ -52,21 +48,6 @@ def test_assistant_service_with_mock_llm():
         "Mock AI response"
     )
 
-    # assert response.status == "success"
-
-    # mock_provider.generate.assert_awaited_once_with(
-    #     system_prompt=(
-    #         "Provide a concise, well-structured answer. "
-    #         "Use approximately 400-600 words unless the question "
-    #         "requires more detail. Avoid unnecessary repetition."
-    #     ),
-    #     user_prompt="What is our payment policy?",
-    # )
-    
-    # assert response.metadata.request_id == "mock-request-123"
-    # assert response.metadata.response_id == "mock-response-456"
-    # assert response.metadata.finish_reason == "end_turn"
-    # assert response.metadata.is_truncated is False
 
     assert response.status == "success"
 
