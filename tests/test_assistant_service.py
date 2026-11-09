@@ -7,6 +7,7 @@ from app.llm.registry import LLMProviderRegistry
 from app.models.schemas import ChatRequest
 from app.services.assistant import AssistantService
 from app.llm.schemas import LLMResult
+from app.core.config import settings
 
 def test_assistant_service_with_mock_llm():
 
@@ -25,6 +26,9 @@ def test_assistant_service_with_mock_llm():
             request_id="mock-request-123",
             response_id="mock-response-456",
             status="success",
+            finish_reason="end_turn",
+            is_truncated=False, 
+            incomplete_reason=None,
         )
 
     registry = LLMProviderRegistry({
@@ -48,11 +52,38 @@ def test_assistant_service_with_mock_llm():
         "Mock AI response"
     )
 
+    # assert response.status == "success"
+
+    # mock_provider.generate.assert_awaited_once_with(
+    #     system_prompt=(
+    #         "Provide a concise, well-structured answer. "
+    #         "Use approximately 400-600 words unless the question "
+    #         "requires more detail. Avoid unnecessary repetition."
+    #     ),
+    #     user_prompt="What is our payment policy?",
+    # )
+    
+    # assert response.metadata.request_id == "mock-request-123"
+    # assert response.metadata.response_id == "mock-response-456"
+    # assert response.metadata.finish_reason == "end_turn"
+    # assert response.metadata.is_truncated is False
+
     assert response.status == "success"
 
+    # Verify both prompts were passed to the LLM provider.
     mock_provider.generate.assert_awaited_once_with(
-        "What is our payment policy?"
+        system_prompt=(
+            "Provide a concise, well-structured answer. "
+            "Use approximately 400–600 words unless the question "
+            "requires more detail. Avoid unnecessary repetition."
+        ),
+        user_prompt="What is our payment policy?",
+        max_output_tokens=settings.llm_max_output_tokens,
     )
-    
+
+    # Verify response metadata.
     assert response.metadata.request_id == "mock-request-123"
     assert response.metadata.response_id == "mock-response-456"
+    assert response.metadata.finish_reason == "end_turn"
+    assert response.metadata.is_truncated is False
+    assert response.metadata.incomplete_reason is None

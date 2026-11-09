@@ -5,6 +5,7 @@ import uuid
 from app.llm.registry import LLMProviderRegistry
 from app.llm.schemas import LLMMetadata
 from app.models.schemas import ChatRequest, ChatResponse
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,15 @@ class AssistantService:
 
         try:
             # result = await provider.generate(request.question)
+            # result = await provider.generate(
+            #     system_prompt=request.system_prompt,
+            #     user_prompt=request.question,
+            # )
+
             result = await provider.generate(
                 system_prompt=request.system_prompt,
                 user_prompt=request.question,
+                max_output_tokens=settings.llm_max_output_tokens,
             )
 
             latency_ms = round(
@@ -47,12 +54,16 @@ class AssistantService:
                 request_id=result.request_id,
                 response_id=result.response_id,
                 status="success",
+                finish_reason=result.finish_reason,
+                is_truncated=result.is_truncated,      
+                incomplete_reason=result.incomplete_reason,          
             )
 
             logger.info(
                 "LLM request completed | provider=%s model=%s "
                 "latency_ms=%.2f input_tokens=%s output_tokens=%s "
-                "request_id=%s response_id=%s",
+                "request_id=%s response_id=%s finish_reason=%s incomplete_reason=%s "
+                "is_truncated=%s",
                 metadata.provider,
                 metadata.model,
                 metadata.latency_ms,
@@ -60,7 +71,25 @@ class AssistantService:
                 metadata.output_tokens,
                 metadata.request_id,
                 metadata.response_id,
+                metadata.finish_reason,
+                metadata.is_truncated,
+                metadata.incomplete_reason,
             )
+
+            # logger.info(
+            #     "LLM request completed | provider=%s model=%s "
+            #     "latency_ms=%.2f input_tokens=%s output_tokens=%s "
+            #     "request_id=%s response_id=%s",
+            #     metadata.provider,
+            #     metadata.model,
+            #     metadata.latency_ms,
+            #     metadata.input_tokens,
+            #     metadata.output_tokens,
+            #     metadata.request_id,
+            #     metadata.response_id,
+            #     metadata.finish_reason,
+            #     metadata.is_truncated,                
+            # )
 
             # logger.info(
             #     "LLM request completed | provider=%s model=%s "

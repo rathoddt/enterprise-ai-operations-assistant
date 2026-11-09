@@ -66,12 +66,22 @@ def send_chat_message(
 
     start_time = time.perf_counter()
     try:
-
+        logger.info(
+            "API request started | provider=%s timeout=%s",
+            provider,
+            REQUEST_TIMEOUT,
+        )
         response = httpx.post(
             CHAT_ENDPOINT,
             json=payload,
             timeout=REQUEST_TIMEOUT,
         )
+
+        logger.info(
+            "API response received | provider=%s status=%s",
+            provider,
+            response.status_code,
+        )        
 
         response.raise_for_status()
         elapsed_ms = (
@@ -81,6 +91,7 @@ def send_chat_message(
             "Frontend API completed | provider=%s latency_ms=%.2f",
             provider,
             elapsed_ms,
+            REQUEST_TIMEOUT,
         )
         return response.json()
 

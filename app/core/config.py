@@ -17,17 +17,9 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # azure_openai_endpoint: str | None = None
-    # azure_openai_api_key: str | None = None
-    # azure_openai_deployment: str | None = None
-    # azure_openai_api_version: str | None = None
-
-    # openai_api_key: str | None = None
-    # openai_model: str = "gpt-5"
-
-    # anthropic_api_key: str | None = None
-    # anthropic_model: str = "claude-sonnet-5-5"
-
+    llm_max_input_tokens: int = 10000
+    llm_max_output_tokens: int = 1500
+    
     foundry_openai_endpoint: str | None = None
     foundry_openai_api_key: str | None = None
     foundry_openai_deployment: str = "gpt-5"
@@ -35,6 +27,7 @@ class Settings(BaseSettings):
     foundry_anthropic_endpoint: str | None = None
     foundry_anthropic_api_key: str | None = None
     foundry_anthropic_deployment: str = "claude-sonnet-5-5"    
+    
 
 
 settings = Settings()

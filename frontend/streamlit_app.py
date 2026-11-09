@@ -11,6 +11,9 @@ from pathlib import Path
 import streamlit as st
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add project root to Python import path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -190,6 +193,24 @@ def display_response(message: dict):
 
         st.caption("Response ID")
 
+        st.write(
+            "**Finish reason:**",
+            metadata.get("finish_reason", "Unknown"),
+        )
+
+        if metadata.get("is_truncated", False):
+            st.warning(
+                "Response may be incomplete: the model reached "
+                "its maximum output-token limit."
+            )
+        else:
+            st.success("Model completed its response.")
+
+        st.write(
+            "**Incomplete reason:**",
+            metadata.get("incomplete_reason") or "None"
+        )
+
 
 # ==================================================
 # HELPER: DISPLAY CONVERSATION HISTORY
@@ -360,12 +381,24 @@ def execute_requests(
                 provider_key = futures[future]
 
                 try:
+                    logger.info(
+                        "Future completed | provider=%s",
+                        provider_key,
+                    )                    
                     results[provider_key] = future.result()
 
                 except APIClientError as exc:
+                    logger.exception(
+                        "API client error | provider=%s",
+                        provider_key,
+                    )                    
                     errors[provider_key] = str(exc)
 
                 except Exception as exc:
+                    logger.exception(
+                        "Unexpected future error | provider=%s",
+                        provider_key,
+                    )                    
                     errors[provider_key] = (
                         f"Unexpected error: {exc}"
                     )
@@ -540,8 +573,6 @@ system_prompt = st.text_area(
     max_chars=8000,
     key="system_prompt",
 )
-
-
 
 st.caption(
     "The same system prompt is applied to every selected model."

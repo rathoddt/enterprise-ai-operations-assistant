@@ -53,6 +53,9 @@ def test_chat_endpoint():
             request_id="mock-request-123",
             response_id="mock-response-456",
             status="success",
+            finish_reason="end_turn",
+            is_truncated=False, 
+            incomplete_reason=None,
         )
     
     registry = LLMProviderRegistry({
