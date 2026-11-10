@@ -9,16 +9,42 @@ from app.core.config import settings
 
 from contextlib import nullcontext
 from app.core.observability import get_langfuse_client
+from app.core.metrics import assistant_requests_total
+
+from app.core.metrics import assistant_requests_with_web_search_total
+from app.web_search.router import SearchRouter
+from app.services.web_search import WebSearchService
+from app.web_search.schemas import WebSearchRequest
+from app.core.metrics import assistant_requests_by_provider_total
 
 logger = logging.getLogger(__name__)
 
 
 class AssistantService:
 
-    def __init__(self, provider_registry: LLMProviderRegistry):
+    def __init__(
+        self,
+        provider_registry: LLMProviderRegistry,
+        search_router: SearchRouter | None = None,
+        web_search_service: WebSearchService | None = None,
+    ):
         self.provider_registry = provider_registry
+        self.search_router = search_router
+        self.web_search_service = web_search_service
         self.langfuse = get_langfuse_client()
+        
+    # def __init__(self, provider_registry: LLMProviderRegistry):
+    #     self.provider_registry = provider_registry
+    #     self.langfuse = get_langfuse_client()
+
     async def process_request(self, request: ChatRequest) -> ChatResponse:
+        # Count each incoming assistant request exactly once.
+        # assistant_requests_total.inc()
+        # Count each incoming assistant request exactly once.
+        assistant_requests_total.inc()
+        assistant_requests_by_provider_total.labels(
+            provider=request.provider
+        ).inc()
 
         conversation_id = (
             request.conversation_id or str(uuid.uuid4())
@@ -44,13 +70,61 @@ class AssistantService:
             )
 
             start_time = time.perf_counter()
+            search_context_text = ""
+            web_search_used = False
 
             try:
-                # result = await provider.generate(
-                #     system_prompt=request.system_prompt,
-                #     user_prompt=request.question,
-                #     max_output_tokens=settings.llm_max_output_tokens,
-                # )
+                # Dynamically decide whether web search is required.
+                if self.search_router and self.web_search_service:
+
+                    search_decision = await self.search_router.route(
+                        query=request.question,
+                        provider=provider,
+                    )
+
+                    if search_decision.requires_search:
+
+                        # Count this assistant request only once when search is attempted.
+                        if not web_search_used:
+                            assistant_requests_with_web_search_total.inc()
+                            web_search_used = True
+
+                        search_request = WebSearchRequest(
+                            query=search_decision.search_query or request.question,
+                            max_results=5,
+                            search_depth="basic",
+                            topic=search_decision.search_type
+                            if search_decision.search_type in ("general", "news")
+                            else "general",
+                            include_answer=True,
+                        )
+
+                        search_response = await self.web_search_service.search(
+                            search_request
+                        )
+
+                        search_context_parts = []
+
+                        if search_response.answer:
+                            search_context_parts.append(
+                                f"Search summary:\n{search_response.answer}"
+                            )
+
+                        for index, result in enumerate(
+                            search_response.results,
+                            start=1,
+                        ):
+                            search_context_parts.append(
+                                f"[Source {index}]\n"
+                                f"Title: {result.title}\n"
+                                f"URL: {result.url}\n"
+                                f"Content: {result.content}"
+                            )
+
+                        search_context_text = (
+                            "\n\nWeb search results:\n"
+                            + "\n\n".join(search_context_parts)
+                        )
 
                 generation_context = (
                     self.langfuse.start_as_current_observation(
@@ -72,7 +146,8 @@ class AssistantService:
                     try:
                         result = await provider.generate(
                             system_prompt=request.system_prompt,
-                            user_prompt=request.question,
+                            # user_prompt=request.question,
+                            user_prompt=request.question + search_context_text,
                             max_output_tokens=settings.llm_max_output_tokens,
                         )
 

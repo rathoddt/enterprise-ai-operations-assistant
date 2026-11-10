@@ -12,6 +12,7 @@ from app.core.exceptions import ApplicationError
 
 from contextlib import asynccontextmanager
 from app.core.observability import get_langfuse_client
+from prometheus_client import make_asgi_app
 
 setup_logging()
 
@@ -44,6 +45,10 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+# Prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
 @app.exception_handler(ApplicationError)
 async def application_error_handler(
