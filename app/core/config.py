@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     langfuse_base_url: str = "http://localhost:3000"
 
     tavily_api_key: str | None = None
+
+    # PostgreSQL configuration
+    postgres_host: str = "127.0.0.1"
+    postgres_port: int = 5433
+    postgres_db: str = "eaoa_analytics"
+    postgres_user: str = "eaoa_app"
+    postgres_password: str
     
 
 

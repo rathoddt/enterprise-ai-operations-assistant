@@ -16,22 +16,35 @@ from app.web_search.router import SearchRouter
 from app.services.web_search import WebSearchService
 from app.web_search.schemas import WebSearchRequest
 from app.core.metrics import assistant_requests_by_provider_total
+from app.db.repositories import EventRepository
 
 logger = logging.getLogger(__name__)
 
 
 class AssistantService:
-
     def __init__(
         self,
         provider_registry: LLMProviderRegistry,
         search_router: SearchRouter | None = None,
         web_search_service: WebSearchService | None = None,
+        event_repository: EventRepository | None = None,
     ):
         self.provider_registry = provider_registry
         self.search_router = search_router
         self.web_search_service = web_search_service
+        self.event_repository = event_repository
         self.langfuse = get_langfuse_client()
+
+    # def __init__(
+    #     self,
+    #     provider_registry: LLMProviderRegistry,
+    #     search_router: SearchRouter | None = None,
+    #     web_search_service: WebSearchService | None = None,
+    # ):
+    #     self.provider_registry = provider_registry
+    #     self.search_router = search_router
+    #     self.web_search_service = web_search_service
+    #     self.langfuse = get_langfuse_client()
         
     # def __init__(self, provider_registry: LLMProviderRegistry):
     #     self.provider_registry = provider_registry
@@ -49,6 +62,9 @@ class AssistantService:
         conversation_id = (
             request.conversation_id or str(uuid.uuid4())
         )
+
+        request_event_id = uuid.uuid4()
+        event_persisted = False
 
         observation_context = (
             self.langfuse.start_as_current_observation(
@@ -68,6 +84,20 @@ class AssistantService:
             provider = self.provider_registry.get_provider(
                 request.provider
             )
+            if self.event_repository:
+                try:
+                    await self.event_repository.create_assistant_request(
+                        event_id=request_event_id,
+                        conversation_id=conversation_id,
+                        provider=request.provider,
+                    )
+                    event_persisted = True
+                except Exception:
+                    logger.exception(
+                        "Failed to persist assistant request event"
+                    )
+
+            start_time = time.perf_counter()            
 
             start_time = time.perf_counter()
             search_context_text = ""
@@ -81,6 +111,16 @@ class AssistantService:
                         query=request.question,
                         provider=provider,
                     )
+                    if event_persisted:
+                        try:
+                            await self.event_repository.record_search_decision(
+                                event_id=request_event_id,
+                                decision=search_decision,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Failed to persist search routing decision"
+                            )
 
                     if search_decision.requires_search:
 
@@ -227,6 +267,25 @@ class AssistantService:
                             "latency_ms": metadata.latency_ms,
                         }
                     )
+                if event_persisted:
+                    try:
+                        await self.event_repository.update_assistant_request(
+                            event_id=request_event_id,
+                            model=metadata.model,
+                            status="success",
+                            latency_ms=metadata.latency_ms,
+                            input_tokens=metadata.input_tokens,
+                            output_tokens=metadata.output_tokens,
+                            provider_request_id=metadata.request_id,
+                            provider_response_id=metadata.response_id,
+                            finish_reason=metadata.finish_reason,
+                            is_truncated=metadata.is_truncated,
+                            incomplete_reason=metadata.incomplete_reason,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to update successful assistant request event"
+                        )
 
                 return ChatResponse(
                     answer=result.answer,
@@ -265,102 +324,22 @@ class AssistantService:
                     status="error",
                 )
 
+                if event_persisted:
+                    try:
+                        await self.event_repository.update_assistant_request(
+                            event_id=request_event_id,
+                            model=deployment,
+                            status="error",
+                            latency_ms=latency_ms,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to update failed assistant request event"
+                        )
+
                 return ChatResponse(
                     answer="The assistant could not process your request.",
                     conversation_id=conversation_id,
                     status="error",
                     metadata=metadata,
                 )        
-
-    # async def process_request(self, request: ChatRequest) -> ChatResponse:
-
-    #     conversation_id = (
-    #         request.conversation_id or str(uuid.uuid4())
-    #     )
-
-    #     provider = self.provider_registry.get_provider(
-    #         request.provider
-    #     )
-
-    #     start_time = time.perf_counter()
-
-    #     try:
-    #         result = await provider.generate(
-    #             system_prompt=request.system_prompt,
-    #             user_prompt=request.question,
-    #             max_output_tokens=settings.llm_max_output_tokens,
-    #         )
-
-    #         latency_ms = round(
-    #             (time.perf_counter() - start_time) * 1000,
-    #             2,
-    #         )
-
-    #         metadata = LLMMetadata(
-    #             provider=result.provider,
-    #             model=result.model,
-    #             latency_ms=latency_ms,
-    #             input_tokens=result.input_tokens,
-    #             output_tokens=result.output_tokens,
-    #             request_id=result.request_id,
-    #             response_id=result.response_id,
-    #             status="success",
-    #             finish_reason=result.finish_reason,
-    #             is_truncated=result.is_truncated,      
-    #             incomplete_reason=result.incomplete_reason,          
-    #         )
-
-    #         logger.info(
-    #             "LLM request completed | provider=%s model=%s "
-    #             "latency_ms=%.2f input_tokens=%s output_tokens=%s "
-    #             "request_id=%s response_id=%s finish_reason=%s "
-    #             "is_truncated=%s incomplete_reason=%s",
-    #             metadata.provider,
-    #             metadata.model,
-    #             metadata.latency_ms,
-    #             metadata.input_tokens,
-    #             metadata.output_tokens,
-    #             metadata.request_id,
-    #             metadata.response_id,
-    #             metadata.finish_reason,
-    #             metadata.is_truncated,
-    #             metadata.incomplete_reason,
-    #         )
-
-    #         return ChatResponse(
-    #             answer=result.answer,
-    #             conversation_id=conversation_id,
-    #             status="success",
-    #             metadata=metadata,
-    #         )
-
-    #     except Exception:
-    #         latency_ms = round(
-    #             (time.perf_counter() - start_time) * 1000,
-    #             2,
-    #         )
-
-    #         logger.exception(
-    #             "LLM request failed | provider=%s",
-    #             request.provider,
-    #         )
-
-    #         deployment = getattr(provider, "deployment", None)
-
-    #         if not isinstance(deployment, str):
-    #             deployment = "unknown"
-
-    #         metadata = LLMMetadata(
-    #             provider=request.provider,
-    #             model=deployment,
-    #             latency_ms=latency_ms,
-    #             status="error",
-    #         )
-
-    #         return ChatResponse(
-    #             answer="The assistant could not process your request.",
-    #             conversation_id=conversation_id,
-    #             status="error",
-    #             metadata=metadata,
-    #         )
-

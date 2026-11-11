@@ -8,6 +8,7 @@ from app.web_search.routing import SearchDecision
 from contextlib import nullcontext
 
 from app.core.observability import get_langfuse_client
+from app.core.metrics import search_routing_decisions_total
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,21 @@ class SearchRouter:
             decision_source="rules",
         )
 
+    def _record_decision(self, decision: SearchDecision) -> None:
+        outcome = "search" if decision.requires_search else "no_search"
+
+        search_routing_decisions_total.labels(
+            decision=outcome,
+            source=decision.decision_source,
+        ).inc()
+
+        logger.info(
+            "Search decision metric recorded | decision=%s source=%s confidence=%.2f",
+            outcome,
+            decision.decision_source,
+            decision.confidence,
+        )
+
     async def route(
         self,
         query: str,
@@ -235,6 +251,8 @@ class SearchRouter:
                         },
                     )
 
+                self._record_decision(decision)
+
                 return decision
 
             except Exception as exc:
@@ -250,190 +268,8 @@ class SearchRouter:
                     "Search routing failed. Falling back to rule-based decision."
                 )
 
-                return self.route_rules(query)
-        
-    # async def route(
-    #     self,
-    #     query: str,
-    #     provider: LLMProvider,
-    # ) -> SearchDecision:
-
-    #     rule_decision = self.route_rules(query)
-
-    #     if rule_decision.confidence >= self.CONFIDENCE_THRESHOLD:
-
-    #         logger.info(
-    #             "Search routing completed | source=rules "
-    #             "requires_search=%s confidence=%.2f",
-    #             rule_decision.requires_search,
-    #             rule_decision.confidence,
-    #         )
-
-    #         return rule_decision
-
-    #     logger.info(
-    #         "Rule-based search routing uncertain | "
-    #         "confidence=%.2f threshold=%.2f. "
-    #         "Invoking LLM classifier.",
-    #         rule_decision.confidence,
-    #         self.CONFIDENCE_THRESHOLD,
-    #     )
-
-    #     try:
-    #         decision = await self.classifier.classify(
-    #             query=query,
-    #             provider=provider,
-    #         )
-
-    #         logger.info(
-    #             "Search routing completed | source=llm "
-    #             "requires_search=%s confidence=%.2f",
-    #             decision.requires_search,
-    #             decision.confidence,
-    #         )
-
-    #         return decision
-
-    #     except Exception:
-    #         logger.exception(
-    #             "LLM search classification failed. "
-    #             "Falling back to rule-based decision."
-    #         )
-
-    #         return rule_decision
-        
-# import re
-
-# from app.web_search.routing import SearchDecision
-
-
-# class SearchRouter:
-
-#     LIVE_KEYWORDS = [
-#         "today",
-#         "right now",
-#         "currently",
-#         "current",
-#         "latest",
-#         "as of now",
-#         "real-time",
-#         "realtime",
-#         "weather",
-#         "stock price",
-#         "share price",
-#         "exchange rate",
-#         "live score",
-#     ]
-
-#     RECENT_KEYWORDS = [
-#         "recent",
-#         "recently",
-#         "this week",
-#         "this month",
-#         "this year",
-#         "new release",
-#         "released",
-#         "announced",
-#         "what changed",
-#         "updates",
-#         "news",
-#     ]
-
-#     PRICING_KEYWORDS = [
-#         "pricing",
-#         "price",
-#         "cost",
-#         "subscription",
-#         "plan cost",
-#     ]
-
-#     WEATHER_KEYWORDS = [
-#         "weather",
-#         "temperature",
-#         "rain",
-#         "forecast",
-#     ]
-
-#     NEWS_KEYWORDS = [
-#         "news",
-#         "announced",
-#         "announcement",
-#         "released",
-#         "release",
-#         "this week",
-#     ]
-
-#     def _contains_keyword(
-#         self,
-#         query: str,
-#         keywords: list[str],
-#     ) -> bool:
-#         normalized_query = query.lower()
-
-#         return any(
-#             re.search(
-#                 rf"\b{re.escape(keyword)}\b",
-#                 normalized_query,
-#             )
-#             for keyword in keywords
-#         )
-
-#     def route(self, query: str) -> SearchDecision:
-
-#         if self._contains_keyword(query, self.WEATHER_KEYWORDS):
-#             return SearchDecision(
-#                 requires_search=True,
-#                 reason="Weather information requires current data.",
-#                 search_query=query,
-#                 search_type="weather",
-#                 freshness="live",
-#                 confidence=1.0,
-#                 decision_source="rules",
-#             )
-
-#         if self._contains_keyword(query, self.PRICING_KEYWORDS):
-#             return SearchDecision(
-#                 requires_search=True,
-#                 reason="Pricing information can change over time.",
-#                 search_query=query,
-#                 search_type="pricing",
-#                 freshness="recent",
-#                 confidence=0.95,
-#                 decision_source="rules",
-#             )
-
-#         if self._contains_keyword(query, self.LIVE_KEYWORDS):
-#             return SearchDecision(
-#                 requires_search=True,
-#                 reason="The query requests current or live information.",
-#                 search_query=query,
-#                 search_type="general",
-#                 freshness="live",
-#                 confidence=0.95,
-#                 decision_source="rules",
-#             )
-
-#         if self._contains_keyword(query, self.RECENT_KEYWORDS):
-#             return SearchDecision(
-#                 requires_search=True,
-#                 reason="The query requests recent information or updates.",
-#                 search_query=query,
-#                 search_type=(
-#                     "news"
-#                     if self._contains_keyword(query, self.NEWS_KEYWORDS)
-#                     else "general"
-#                 ),
-#                 freshness="recent",
-#                 confidence=0.95,
-#                 decision_source="rules",
-#             )
-
-#         return SearchDecision(
-#             requires_search=False,
-#             reason="No explicit freshness requirement detected.",
-#             search_query=None,
-#             search_type="general",
-#             freshness="none",
-#             confidence=0.70,
-#             decision_source="rules",
-#         )
+                # return self.route_rules(query)
+                fallback_decision = self.route_rules(query)
+                self._record_decision(fallback_decision)
+                return fallback_decision
+            

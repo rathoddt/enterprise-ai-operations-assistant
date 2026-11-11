@@ -10,6 +10,7 @@ from app.services.web_search import WebSearchService
 from app.web_search.providers.tavily_provider import TavilySearchProvider
 
 from app.web_search.router import SearchRouter
+from app.db.repositories import EventRepository
 
 @lru_cache
 def get_settings() -> Settings:
@@ -50,10 +51,16 @@ def get_assistant_service() -> AssistantService:
     search_router = SearchRouter()
     web_search_service = get_web_search_service()
 
+    # return AssistantService(
+    #     provider_registry=registry,
+    #     search_router=search_router,
+    #     web_search_service=web_search_service,
+    # )
     return AssistantService(
         provider_registry=registry,
         search_router=search_router,
         web_search_service=web_search_service,
+        event_repository=EventRepository(),
     )
 
 @lru_cache

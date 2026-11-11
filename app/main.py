@@ -12,19 +12,41 @@ from app.core.exceptions import ApplicationError
 
 from contextlib import asynccontextmanager
 from app.core.observability import get_langfuse_client
-from prometheus_client import make_asgi_app
+# from prometheus_client import make_asgi_app
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
+from app.db.database import check_db_connection, close_db_connection
 
 setup_logging()
 
 logger = get_logger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup")
 
+    # Verify PostgreSQL connectivity
+    try:
+        await check_db_connection()
+        logger.info("PostgreSQL connection established successfully.")
+    except Exception:
+        logger.exception("PostgreSQL connection failed during startup.")
+        raise
+
     yield
 
-    logger.info("Application shutdown: flushing Langfuse events")
+    logger.info("Application shutdown")
+
+    # Close PostgreSQL connection pool
+    try:
+        await close_db_connection()
+        logger.info("PostgreSQL connections disposed successfully.")
+    except Exception:
+        logger.exception("Failed to dispose PostgreSQL connections.")
+
+    # Flush Langfuse events
+    logger.info("Flushing Langfuse events")
 
     langfuse = get_langfuse_client()
 
@@ -47,8 +69,15 @@ app = FastAPI(
 )
 
 # Prometheus metrics endpoint
-metrics_app = make_asgi_app()
-app.mount("/metrics", metrics_app)
+# metrics_app = make_asgi_app()
+# app.mount("/metrics", metrics_app)
+# Prometheus metrics endpoint
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 @app.exception_handler(ApplicationError)
 async def application_error_handler(

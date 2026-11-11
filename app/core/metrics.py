@@ -27,3 +27,10 @@ assistant_requests_by_provider_total = Counter(
     "Total assistant requests grouped by provider",
     ["provider"],
 )
+
+# Search routing decisions grouped by outcome and decision source.
+search_routing_decisions_total = Counter(
+    "search_routing_decisions_total",
+    "Total search routing decisions",
+    ["decision", "source"],
+)
