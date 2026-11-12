@@ -12,10 +12,6 @@ class AnthropicProvider:
     ):
         self.deployment = deployment
 
-        # self.client = AsyncAnthropicFoundry(
-        #     api_key=api_key,
-        #     base_url=endpoint,
-        # )
         self.client = AsyncAnthropicFoundry(
             api_key=api_key,
             base_url=endpoint,
