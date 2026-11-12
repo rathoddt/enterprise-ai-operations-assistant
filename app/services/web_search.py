@@ -1,3 +1,5 @@
+import time
+from uuid import UUID
 
 import logging
 
@@ -10,19 +12,26 @@ from app.web_search.schemas import (
 from contextlib import nullcontext
 from app.core.observability import get_langfuse_client
 from app.core.metrics import web_search_executions_total
+from app.db.repositories import EventRepository
 
 logger = logging.getLogger(__name__)
 
 
 class WebSearchService:
-    def __init__(self, provider: WebSearchProvider):
+    def __init__(
+        self,
+        provider: WebSearchProvider,
+        event_repository: EventRepository | None = None,
+    ):
         self.provider = provider
+        self.event_repository = event_repository
         self.langfuse = get_langfuse_client()
+
     async def search(
         self,
         request: WebSearchRequest,
+        request_event_id: UUID | None = None,
     ) -> WebSearchResponse:
-
         search_context = (
             self.langfuse.start_as_current_observation(
                 as_type="span",
@@ -40,6 +49,7 @@ class WebSearchService:
         )
 
         with search_context as search_span:
+            search_start_time = time.perf_counter()
 
             try:
                 logger.info(
@@ -49,10 +59,31 @@ class WebSearchService:
                 )
 
                 response = await self.provider.search(request)
+                measured_response_time = round(
+                    time.perf_counter() - search_start_time,
+                    4,
+                )
+
                 web_search_executions_total.labels(
                     provider=response.provider,
                     status="success",
                 ).inc()
+
+                if self.event_repository and request_event_id:
+                    try:
+                        await self.event_repository.record_web_search_execution(
+                            event_id=request_event_id,
+                            provider=response.provider,
+                            status="success",
+                            # response_time=response.response_time,
+                            response_time=measured_response_time,
+                            result_count=len(response.results),
+                            answer_available=bool(response.answer),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to persist successful web search event"
+                        )
 
                 if search_span:
                     search_span.update(
@@ -70,10 +101,11 @@ class WebSearchService:
 
                 logger.info(
                     "Web search completed | provider=%s results=%s "
-                    "response_time=%s",
+                    "response_time=%s measured_response_time=%s",
                     response.provider,
                     len(response.results),
                     response.response_time,
+                    measured_response_time,
                 )
 
                 return response
@@ -85,6 +117,23 @@ class WebSearchService:
                     ).lower(),
                     status="error",
                 ).inc()
+                if self.event_repository and request_event_id:
+                    try:
+                        await self.event_repository.record_web_search_execution(
+                            event_id=request_event_id,
+                            provider=self.provider.__class__.__name__.replace(
+                                "SearchProvider", ""
+                            ).lower(),
+                            status="error",
+                            response_time=round(
+                                (time.perf_counter() - search_start_time), 4
+                            ),
+                            error_type=type(exc).__name__,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to persist failed web search event"
+                        )
 
                 if search_span:
                     search_span.update(

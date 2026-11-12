@@ -9,13 +9,26 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    ForeignKey,
     func,
 )
+
+# from sqlalchemy import (
+#     Boolean,
+#     DateTime,
+#     Float,
+#     Integer,
+#     String,
+#     Text,
+#     func,
+#     server_default,
+#     onupdate,
+# )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
-from sqlalchemy import ForeignKey
+
 
 class AssistantRequestEvent(Base):
     __tablename__ = "assistant_request_events"
@@ -101,6 +114,13 @@ class AssistantRequestEvent(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )    
 
 
 

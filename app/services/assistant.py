@@ -1,16 +1,15 @@
 import logging
 import time
 import uuid
+import asyncio
 
 from app.llm.registry import LLMProviderRegistry
 from app.llm.schemas import LLMMetadata
 from app.models.schemas import ChatRequest, ChatResponse
 from app.core.config import settings
-
 from contextlib import nullcontext
 from app.core.observability import get_langfuse_client
 from app.core.metrics import assistant_requests_total
-
 from app.core.metrics import assistant_requests_with_web_search_total
 from app.web_search.router import SearchRouter
 from app.services.web_search import WebSearchService
@@ -19,7 +18,6 @@ from app.core.metrics import assistant_requests_by_provider_total
 from app.db.repositories import EventRepository
 
 logger = logging.getLogger(__name__)
-
 
 class AssistantService:
     def __init__(
@@ -35,20 +33,74 @@ class AssistantService:
         self.event_repository = event_repository
         self.langfuse = get_langfuse_client()
 
-    # def __init__(
-    #     self,
-    #     provider_registry: LLMProviderRegistry,
-    #     search_router: SearchRouter | None = None,
-    #     web_search_service: WebSearchService | None = None,
-    # ):
-    #     self.provider_registry = provider_registry
-    #     self.search_router = search_router
-    #     self.web_search_service = web_search_service
-    #     self.langfuse = get_langfuse_client()
-        
-    # def __init__(self, provider_registry: LLMProviderRegistry):
-    #     self.provider_registry = provider_registry
-    #     self.langfuse = get_langfuse_client()
+    async def _run_request_heartbeat(self, event_id: uuid.UUID) -> None:
+        """Refresh the heartbeat while an assistant request is active."""
+
+        while True:
+            await asyncio.sleep(
+                settings.event_heartbeat_interval_seconds
+            )
+
+            try:
+                is_active = await self.event_repository.heartbeat_assistant_request(
+                    event_id
+                )
+
+                if not is_active:
+                    logger.info(
+                        "Heartbeat stopped: request is no longer in_progress | event_id=%s",
+                        event_id,
+                    )
+                    return
+
+                logger.debug(
+                    "Assistant request heartbeat refreshed | event_id=%s",
+                    event_id,
+                )
+
+            except Exception:
+                logger.exception(
+                    "Failed to refresh assistant request heartbeat | event_id=%s",
+                    event_id,
+                )
+
+    async def _persist_request_with_retry(
+        self,
+        event_id: uuid.UUID,
+        **values,
+    ) -> bool:
+        """Persist request status with bounded retries."""
+
+        for attempt in range(
+            1,
+            settings.persistence_retry_attempts + 1,
+        ):
+            try:
+                await self.event_repository.update_assistant_request(
+                    event_id=event_id,
+                    **values,
+                )
+                return True
+
+            except Exception:
+                logger.exception(
+                    "Assistant request persistence failed | "
+                    "event_id=%s attempt=%s/%s",
+                    event_id,
+                    attempt,
+                    settings.persistence_retry_attempts,
+                )
+
+                if attempt < settings.persistence_retry_attempts:
+                    await asyncio.sleep(
+                        settings.persistence_retry_delay_seconds
+                    )
+
+        logger.error(
+            "Assistant request persistence exhausted all retries | event_id=%s",
+            event_id,
+        )
+        return False
 
     async def process_request(self, request: ChatRequest) -> ChatResponse:
         # Count each incoming assistant request exactly once.
@@ -65,6 +117,7 @@ class AssistantService:
 
         request_event_id = uuid.uuid4()
         event_persisted = False
+        heartbeat_task = None
 
         observation_context = (
             self.langfuse.start_as_current_observation(
@@ -95,9 +148,11 @@ class AssistantService:
                 except Exception:
                     logger.exception(
                         "Failed to persist assistant request event"
-                    )
-
-            start_time = time.perf_counter()            
+                    )        
+            if event_persisted:
+                heartbeat_task = asyncio.create_task(
+                    self._run_request_heartbeat(request_event_id)
+                )                                 
 
             start_time = time.perf_counter()
             search_context_text = ""
@@ -139,8 +194,12 @@ class AssistantService:
                             include_answer=True,
                         )
 
+                        # search_response = await self.web_search_service.search(
+                        #     search_request
+                        # )
                         search_response = await self.web_search_service.search(
-                            search_request
+                            search_request,
+                            request_event_id=request_event_id if event_persisted else None,
                         )
 
                         search_context_parts = []
@@ -267,25 +326,22 @@ class AssistantService:
                             "latency_ms": metadata.latency_ms,
                         }
                     )
+
                 if event_persisted:
-                    try:
-                        await self.event_repository.update_assistant_request(
-                            event_id=request_event_id,
-                            model=metadata.model,
-                            status="success",
-                            latency_ms=metadata.latency_ms,
-                            input_tokens=metadata.input_tokens,
-                            output_tokens=metadata.output_tokens,
-                            provider_request_id=metadata.request_id,
-                            provider_response_id=metadata.response_id,
-                            finish_reason=metadata.finish_reason,
-                            is_truncated=metadata.is_truncated,
-                            incomplete_reason=metadata.incomplete_reason,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to update successful assistant request event"
-                        )
+                    await self._persist_request_with_retry(
+                        event_id=request_event_id,
+                        model=metadata.model,
+                        status="success",
+                        latency_ms=metadata.latency_ms,
+                        input_tokens=metadata.input_tokens,
+                        output_tokens=metadata.output_tokens,
+                        provider_request_id=metadata.request_id,
+                        provider_response_id=metadata.response_id,
+                        finish_reason=metadata.finish_reason,
+                        is_truncated=metadata.is_truncated,
+                        incomplete_reason=metadata.incomplete_reason,
+                    )
+
 
                 return ChatResponse(
                     answer=result.answer,
@@ -325,17 +381,12 @@ class AssistantService:
                 )
 
                 if event_persisted:
-                    try:
-                        await self.event_repository.update_assistant_request(
-                            event_id=request_event_id,
-                            model=deployment,
-                            status="error",
-                            latency_ms=latency_ms,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to update failed assistant request event"
-                        )
+                    await self._persist_request_with_retry(
+                        event_id=request_event_id,
+                        model=deployment,
+                        status="error",
+                        latency_ms=latency_ms,
+                    )
 
                 return ChatResponse(
                     answer="The assistant could not process your request.",
@@ -343,3 +394,11 @@ class AssistantService:
                     status="error",
                     metadata=metadata,
                 )        
+            finally:
+                if heartbeat_task:
+                    heartbeat_task.cancel()
+
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass

@@ -19,6 +19,14 @@ class Settings(BaseSettings):
 
     llm_max_input_tokens: int = 10000
     llm_max_output_tokens: int = 1500
+    # LLM request reliability
+    llm_request_timeout_seconds: int = 180
+
+    # Database persistence reliability
+    stale_event_threshold_seconds: int = 300
+    event_heartbeat_interval_seconds: int = 60
+    persistence_retry_attempts: int = 3
+    persistence_retry_delay_seconds: float = 1.0
 
     foundry_openai_endpoint: str | None = None
     foundry_openai_api_key: str | None = None

@@ -74,4 +74,8 @@ def get_web_search_service() -> WebSearchService:
 
     provider = TavilySearchProvider()
 
-    return WebSearchService(provider=provider)
+    # return WebSearchService(provider=provider)
+    return WebSearchService(
+        provider=provider,
+        event_repository=EventRepository(),
+    )

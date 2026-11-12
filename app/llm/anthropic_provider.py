@@ -1,6 +1,6 @@
 from anthropic import AsyncAnthropicFoundry
 from app.llm.schemas import LLMResult
-
+from app.core.config import settings
 
 class AnthropicProvider:
 
@@ -12,10 +12,16 @@ class AnthropicProvider:
     ):
         self.deployment = deployment
 
+        # self.client = AsyncAnthropicFoundry(
+        #     api_key=api_key,
+        #     base_url=endpoint,
+        # )
         self.client = AsyncAnthropicFoundry(
             api_key=api_key,
             base_url=endpoint,
-        )
+            timeout=settings.llm_request_timeout_seconds,
+            max_retries=0,
+        )        
 
     async def generate(
             self,

@@ -1,5 +1,6 @@
 from openai import AsyncOpenAI
 from app.llm.schemas import LLMResult
+from app.core.config import settings
 
 class OpenAIProvider:
 
@@ -11,10 +12,16 @@ class OpenAIProvider:
     ):
         self.deployment = deployment
 
+        # self.client = AsyncOpenAI(
+        #     base_url=endpoint,
+        #     api_key=api_key,
+        # )
         self.client = AsyncOpenAI(
             base_url=endpoint,
             api_key=api_key,
-        )
+            timeout=settings.llm_request_timeout_seconds,
+            max_retries=0,
+        )        
 
     async def generate(
             self,
