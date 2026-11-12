@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Database persistence reliability
     stale_event_threshold_seconds: int = 300
     event_heartbeat_interval_seconds: int = 60
+    # event_heartbeat_interval_seconds: int = 5
     stale_recovery_interval_seconds: int = 60
     persistence_retry_attempts: int = 3
     persistence_retry_delay_seconds: float = 1.0
