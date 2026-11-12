@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     # Database persistence reliability
     stale_event_threshold_seconds: int = 300
     event_heartbeat_interval_seconds: int = 60
+    stale_recovery_interval_seconds: int = 60
     persistence_retry_attempts: int = 3
     persistence_retry_delay_seconds: float = 1.0
+    
 
     foundry_openai_endpoint: str | None = None
     foundry_openai_api_key: str | None = None

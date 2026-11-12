@@ -1,3 +1,6 @@
+import asyncio
+from app.db.repositories import EventRepository
+
 from fastapi import FastAPI
 
 from app.core.config import settings
@@ -30,11 +33,37 @@ async def lifespan(app: FastAPI):
     try:
         await check_db_connection()
         logger.info("PostgreSQL connection established successfully.")
+    # except Exception:
+    #     logger.exception("PostgreSQL connection failed during startup.")
+    #     raise
+
+    # yield
+
     except Exception:
         logger.exception("PostgreSQL connection failed during startup.")
         raise
 
-    yield
+    recovery_task = asyncio.create_task(
+        stale_request_recovery_worker(),
+        name="stale-request-recovery",
+    )
+
+    logger.info("Stale request recovery worker started.")
+
+    try:
+        yield
+
+    finally:
+        logger.info("Application shutdown")
+
+        recovery_task.cancel()
+
+        try:
+            await recovery_task
+        except asyncio.CancelledError:
+            logger.info("Stale request recovery worker stopped.")
+
+
 
     logger.info("Application shutdown")
 
@@ -56,6 +85,37 @@ async def lifespan(app: FastAPI):
             logger.info("Langfuse events flushed successfully.")
         except Exception:
             logger.exception("Failed to flush Langfuse events.")
+
+async def stale_request_recovery_worker():
+    """Periodically recover stale assistant requests."""
+
+    repository = EventRepository()
+
+    while True:
+        try:
+            recovered_count = (
+                await repository.recover_stale_assistant_requests()
+            )
+
+            if recovered_count > 0:
+                logger.warning(
+                    "Stale assistant requests recovered | count=%s",
+                    recovered_count,
+                )
+            else:
+                logger.debug("Stale request recovery completed | recovered=0")
+
+        except asyncio.CancelledError:
+            raise
+
+        except Exception:
+            logger.exception(
+                "Stale assistant request recovery failed"
+            )
+
+        await asyncio.sleep(
+            settings.stale_recovery_interval_seconds
+        )
 
 app = FastAPI(
     title=settings.app_name,
