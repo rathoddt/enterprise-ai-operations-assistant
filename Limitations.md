@@ -36,3 +36,17 @@ Recommended target architecture:
 - Monitor recovery counts, worker health, execution duration, and recovery failures through Prometheus and Grafana.
 
 **Current status:** Suitable for local development and single-instance deployment. Distributed coordination and worker separation are required before production multi-replica scaling.
+
+### To be implemented in Phase 2
+# Azure Container Apps – Reliability Architecture Improvements
+
+Status: Deferred
+
+1. Extract stale_request_recovery_worker() from app/main.py.
+2. Create a dedicated worker application.
+3. Deploy the worker as a separate Azure Container App.
+4. Configure one active worker replica.
+5. Implement PostgreSQL advisory locking.
+6. Preserve conditional stale-request updates.
+7. Add worker health and recovery monitoring.
+8. Update deployment documentation and architecture diagrams.
