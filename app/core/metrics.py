@@ -28,9 +28,39 @@ assistant_requests_by_provider_total = Counter(
     ["provider"],
 )
 
+# Initialize provider series so both are visible from application startup.
+assistant_requests_by_provider_total.labels(provider="openai")
+assistant_requests_by_provider_total.labels(provider="anthropic")
+
 # Search routing decisions grouped by outcome and decision source.
 search_routing_decisions_total = Counter(
     "search_routing_decisions_total",
     "Total search routing decisions",
     ["decision", "source"],
+)
+
+
+
+# Persistence retry attempts after an initial failure.
+assistant_persistence_retries_total = Counter(
+    "assistant_persistence_retries_total",
+    "Total assistant request persistence retry attempts",
+)
+
+# Persistence operations that exhausted all configured attempts.
+assistant_persistence_retry_exhausted_total = Counter(
+    "assistant_persistence_retry_exhausted_total",
+    "Total assistant request persistence operations that exhausted retries",
+)
+
+# Failed heartbeat updates.
+assistant_heartbeat_failures_total = Counter(
+    "assistant_heartbeat_failures_total",
+    "Total assistant request heartbeat failures",
+)
+
+# Individual stale assistant requests successfully recovered.
+assistant_stale_requests_recovered_total = Counter(
+    "assistant_stale_requests_recovered_total",
+    "Total stale assistant requests recovered",
 )

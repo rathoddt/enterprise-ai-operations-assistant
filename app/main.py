@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
-
+from app.core.metrics import assistant_stale_requests_recovered_total
 from app.api.routes import health, assistant
 
 from fastapi import Request
@@ -25,24 +25,24 @@ setup_logging()
 logger = get_logger(__name__)
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup")
 
-    # Verify PostgreSQL connectivity
+    # Verify PostgreSQL connectivity.
     try:
         await check_db_connection()
-        logger.info("PostgreSQL connection established successfully.")
-    # except Exception:
-    #     logger.exception("PostgreSQL connection failed during startup.")
-    #     raise
-
-    # yield
-
+        logger.info(
+            "PostgreSQL connection established successfully."
+        )
     except Exception:
-        logger.exception("PostgreSQL connection failed during startup.")
+        logger.exception(
+            "PostgreSQL connection failed during startup."
+        )
         raise
 
+    # Start stale request recovery worker.
     recovery_task = asyncio.create_task(
         stale_request_recovery_worker(),
         name="stale-request-recovery",
@@ -56,35 +56,46 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Application shutdown")
 
-        recovery_task.cancel()
-
+        # Stop the background recovery worker.
         try:
-            await recovery_task
-        except asyncio.CancelledError:
-            logger.info("Stale request recovery worker stopped.")
+            recovery_task.cancel()
 
+            try:
+                await recovery_task
+            except asyncio.CancelledError:
+                logger.info(
+                    "Stale request recovery worker stopped."
+                )
 
+        finally:
+            # Dispose PostgreSQL connection pool.
+            try:
+                await close_db_connection()
+                logger.info(
+                    "PostgreSQL connections disposed successfully."
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to dispose PostgreSQL connections."
+                )
 
-    logger.info("Application shutdown")
+            # Flush Langfuse telemetry.
+            try:
+                logger.info("Flushing Langfuse events")
 
-    # Close PostgreSQL connection pool
-    try:
-        await close_db_connection()
-        logger.info("PostgreSQL connections disposed successfully.")
-    except Exception:
-        logger.exception("Failed to dispose PostgreSQL connections.")
+                langfuse = get_langfuse_client()
 
-    # Flush Langfuse events
-    logger.info("Flushing Langfuse events")
+                if langfuse:
+                    langfuse.flush()
+                    logger.info(
+                        "Langfuse events flushed successfully."
+                    )
 
-    langfuse = get_langfuse_client()
+            except Exception:
+                logger.exception(
+                    "Failed to flush Langfuse events."
+                )
 
-    if langfuse:
-        try:
-            langfuse.flush()
-            logger.info("Langfuse events flushed successfully.")
-        except Exception:
-            logger.exception("Failed to flush Langfuse events.")
 
 async def stale_request_recovery_worker():
     """Periodically recover stale assistant requests."""
@@ -98,10 +109,12 @@ async def stale_request_recovery_worker():
             )
 
             if recovered_count > 0:
+                assistant_stale_requests_recovered_total.inc(recovered_count)
+
                 logger.warning(
                     "Stale assistant requests recovered | count=%s",
                     recovered_count,
-                )
+                )                
             else:
                 logger.debug("Stale request recovery completed | recovered=0")
 

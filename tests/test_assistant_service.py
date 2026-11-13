@@ -12,6 +12,12 @@ from app.core.config import settings
 from app.web_search.routing import SearchDecision
 from app.web_search.schemas import WebSearchResponse, WebSearchResult
 
+from app.core.metrics import (
+    assistant_persistence_retries_total,
+    assistant_persistence_retry_exhausted_total,
+    assistant_heartbeat_failures_total,
+)
+
 def test_assistant_service_with_mock_llm():
 
     mock_provider = AsyncMock()
@@ -286,6 +292,11 @@ def test_persistence_retry_succeeds_after_transient_failure(monkeypatch):
         sleep_mock = AsyncMock()
         monkeypatch.setattr(asyncio, "sleep", sleep_mock)
 
+        retries_before = assistant_persistence_retries_total._value.get()
+        exhausted_before = (
+            assistant_persistence_retry_exhausted_total._value.get()
+        )
+
         result = await service._persist_request_with_retry(
             event_id=uuid.uuid4(),
             status="success",
@@ -295,8 +306,16 @@ def test_persistence_retry_succeeds_after_transient_failure(monkeypatch):
         assert mock_repository.update_assistant_request.await_count == 2
         sleep_mock.assert_awaited_once()
 
-    asyncio.run(run_test())
+        assert (
+            assistant_persistence_retries_total._value.get()
+            == retries_before + 1
+        )
+        assert (
+            assistant_persistence_retry_exhausted_total._value.get()
+            == exhausted_before
+        )
 
+    asyncio.run(run_test())
 
 def test_persistence_retry_stops_after_max_attempts(monkeypatch):
 
@@ -315,23 +334,75 @@ def test_persistence_retry_stops_after_max_attempts(monkeypatch):
         sleep_mock = AsyncMock()
         monkeypatch.setattr(asyncio, "sleep", sleep_mock)
 
+        retries_before = assistant_persistence_retries_total._value.get()
+        exhausted_before = (
+            assistant_persistence_retry_exhausted_total._value.get()
+        )
+
         result = await service._persist_request_with_retry(
             event_id=uuid.uuid4(),
             status="success",
         )
 
         assert result is False
+
         assert (
             mock_repository.update_assistant_request.await_count
             == settings.persistence_retry_attempts
         )
+
         assert (
             sleep_mock.await_count
             == settings.persistence_retry_attempts - 1
         )
 
+        assert (
+            assistant_persistence_retries_total._value.get()
+            == retries_before + settings.persistence_retry_attempts - 1
+        )
+
+        assert (
+            assistant_persistence_retry_exhausted_total._value.get()
+            == exhausted_before + 1
+        )
+
     asyncio.run(run_test())
 
+def test_heartbeat_failure_increments_metric(monkeypatch):
+
+    async def run_test():
+
+        mock_repository = AsyncMock()
+
+        mock_repository.heartbeat_assistant_request.side_effect = [
+            RuntimeError("Database unavailable"),
+            False,
+        ]
+
+        service = AssistantService(
+            provider_registry=LLMProviderRegistry({}),
+            event_repository=mock_repository,
+        )
+
+        heartbeat_failures_before = (
+            assistant_heartbeat_failures_total._value.get()
+        )
+
+        # Prevent real waiting during the test.
+        monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+        await service._run_request_heartbeat(uuid.uuid4())
+
+        assert (
+            mock_repository.heartbeat_assistant_request.await_count == 2
+        )
+
+        assert (
+            assistant_heartbeat_failures_total._value.get()
+            == heartbeat_failures_before + 1
+        )
+
+    asyncio.run(run_test())
 
 def test_successful_llm_response_survives_persistence_failure(monkeypatch):
 

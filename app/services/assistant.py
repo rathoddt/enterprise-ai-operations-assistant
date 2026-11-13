@@ -9,13 +9,20 @@ from app.models.schemas import ChatRequest, ChatResponse
 from app.core.config import settings
 from contextlib import nullcontext
 from app.core.observability import get_langfuse_client
-from app.core.metrics import assistant_requests_total
-from app.core.metrics import assistant_requests_with_web_search_total
+
 from app.web_search.router import SearchRouter
 from app.services.web_search import WebSearchService
 from app.web_search.schemas import WebSearchRequest
-from app.core.metrics import assistant_requests_by_provider_total
 from app.db.repositories import EventRepository
+
+from app.core.metrics import (
+    assistant_requests_total,
+    assistant_requests_with_web_search_total,
+    assistant_requests_by_provider_total,
+    assistant_persistence_retries_total,
+    assistant_persistence_retry_exhausted_total,
+    assistant_heartbeat_failures_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +66,7 @@ class AssistantService:
                 )
 
             except Exception:
+                assistant_heartbeat_failures_total.inc()
                 logger.exception(
                     "Failed to refresh assistant request heartbeat | event_id=%s",
                     event_id,
@@ -92,10 +100,14 @@ class AssistantService:
                 )
 
                 if attempt < settings.persistence_retry_attempts:
+                    assistant_persistence_retries_total.inc()
+
                     await asyncio.sleep(
                         settings.persistence_retry_delay_seconds
-                    )
+                    )                
 
+        assistant_persistence_retry_exhausted_total.inc()
+        
         logger.error(
             "Assistant request persistence exhausted all retries | event_id=%s",
             event_id,
