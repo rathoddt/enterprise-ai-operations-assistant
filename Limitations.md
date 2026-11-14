@@ -50,3 +50,19 @@ Status: Deferred
 6. Preserve conditional stale-request updates.
 7. Add worker health and recovery monitoring.
 8. Update deployment documentation and architecture diagrams.
+
+### Formulae
+
+\[
+\text{Total Requests} = \text{Total Routing Decisions}
+\]
+
+\[
+\text{Total Routing Decisions} = \text{Search Decisions} + \text{No-Search Decisions}
+\]
+
+\[
+\text{Search Requests} = \text{Search Decisions}
+\]
+
+
