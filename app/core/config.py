@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     foundry_openai_endpoint: str | None = None
     foundry_openai_api_key: str | None = None
     foundry_openai_deployment: str = "gpt-5"
+    # foundry_openai_embedding_deployment: str = "text-embedding-3-small"
+    foundry_openai_embedding_deployment: str = "text-embedding-3-small"
 
     foundry_anthropic_endpoint: str | None = None
     foundry_anthropic_api_key: str | None = None
@@ -52,7 +54,12 @@ class Settings(BaseSettings):
     postgres_db: str = "eaoa_analytics"
     postgres_user: str = "eaoa_app"
     postgres_password: str
-    
 
+    rag_chunk_size: int = 800
+    rag_chunk_overlap: int = 120
+    rag_tokenizer_encoding: str = "cl100k_base"
+    
+    # Document ingestion
+    rag_max_upload_size_mb: int = 20
 
 settings = Settings()

@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
 from app.core.metrics import assistant_stale_requests_recovered_total
-from app.api.routes import health, assistant
 
+from app.api.routes import health, assistant, documents, retrieval
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -182,6 +182,15 @@ app.include_router(
     prefix=settings.api_prefix
 )
 
+app.include_router(
+    documents.router,
+    prefix=settings.api_prefix
+)
+
+app.include_router(
+    retrieval.router,
+    prefix=settings.api_prefix
+)
 
 @app.get("/")
 async def root():

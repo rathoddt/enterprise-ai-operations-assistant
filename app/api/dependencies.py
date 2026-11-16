@@ -12,6 +12,11 @@ from app.web_search.providers.tavily_provider import TavilySearchProvider
 from app.web_search.router import SearchRouter
 from app.db.repositories import EventRepository
 
+from app.rag.ingestion_service import DocumentIngestionService
+from app.rag.embeddings import EmbeddingService
+from app.rag.vector_store import FAISSVectorStore
+from app.rag.retrieval_service import SemanticRetrievalService
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -78,4 +83,41 @@ def get_web_search_service() -> WebSearchService:
     return WebSearchService(
         provider=provider,
         event_repository=EventRepository(),
+    )
+
+@lru_cache
+def get_embedding_service() -> EmbeddingService:
+    return EmbeddingService()
+
+
+@lru_cache
+def get_vector_store() -> FAISSVectorStore:
+    vector_store = FAISSVectorStore()
+
+    index_exists = vector_store.index_path.exists()
+    metadata_exists = vector_store.metadata_path.exists()
+
+    if index_exists != metadata_exists:
+        raise RuntimeError(
+            "FAISS index and metadata files are incomplete"
+        )
+
+    if index_exists and metadata_exists:
+        vector_store.load()
+
+    return vector_store
+
+@lru_cache
+def get_document_ingestion_service() -> DocumentIngestionService:
+    return DocumentIngestionService(
+        embedding_service=get_embedding_service(),
+        vector_store=get_vector_store(),
+    )
+
+
+@lru_cache
+def get_semantic_retrieval_service() -> SemanticRetrievalService:
+    return SemanticRetrievalService(
+        embedding_service=get_embedding_service(),
+        vector_store=get_vector_store(),
     )

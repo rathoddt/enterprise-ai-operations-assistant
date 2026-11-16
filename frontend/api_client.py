@@ -20,6 +20,13 @@ CHAT_ENDPOINT = (
     f"{API_BASE_URL.rstrip('/')}/api/v1/assistant/chat"
 )
 
+DOCUMENT_UPLOAD_ENDPOINT = (
+    f"{API_BASE_URL.rstrip('/')}/api/v1/documents/upload"
+)
+
+MAX_UPLOAD_SIZE_MB = 20
+MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
 REQUEST_TIMEOUT = 120.0
 
 
@@ -114,116 +121,50 @@ def send_chat_message(
         ) from exc
 
 
-# ------------------- v1 -------------------
-# import os
-# import httpx
+def upload_document(
+    filename: str,
+    file_content: bytes,
+) -> dict:
+    """Upload a document to the RAG ingestion API."""
 
-# API_BASE_URL = os.getenv(
-#     "API_BASE_URL",
-#     "http://127.0.0.1:8000",
-# )
+    if not filename:
+        raise APIClientError("Filename cannot be empty.")
 
-# CHAT_ENDPOINT = f"{API_BASE_URL.rstrip('/')}/api/v1/assistant/chat"
+    if not file_content:
+        raise APIClientError("Selected file is empty.")
 
-# REQUEST_TIMEOUT = 120.0
+    if len(file_content) > MAX_UPLOAD_SIZE_BYTES:
+        raise APIClientError(
+            f"File exceeds the {MAX_UPLOAD_SIZE_MB} MB limit."
+        )
 
+    try:
+        response = httpx.post(
+            DOCUMENT_UPLOAD_ENDPOINT,
+            files={
+                "file": (
+                    filename,
+                    file_content,
+                    "application/octet-stream",
+                )
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
 
-# class APIClientError(Exception):
-#     """Raised when the FastAPI backend returns an error."""
+        response.raise_for_status()
+        return response.json()
 
-#     def send_chat_message(
-#         question: str,
-#         provider: str,
-#         system_prompt: str,
-#         conversation_id: str | None = None,
-#     ) -> dict:
+    except httpx.HTTPStatusError as exc:
+        try:
+            error_detail = exc.response.json()
+        except ValueError:
+            error_detail = exc.response.text
 
-#         payload = {
-#             "question": question,
-#             "system_prompt": system_prompt,
-#             "provider": provider,
-#         }
+        raise APIClientError(
+            f"HTTP {exc.response.status_code}: {error_detail}"
+        ) from exc
 
-#         if conversation_id:
-#             payload["conversation_id"] = conversation_id
-
-#         try:
-#             response = httpx.post(
-#                 CHAT_ENDPOINT,
-#                 json=payload,
-#                 timeout=REQUEST_TIMEOUT,
-#             )
-
-#             response.raise_for_status()
-
-#             return response.json()
-
-#         except httpx.HTTPStatusError as exc:
-#             try:
-#                 error_detail = exc.response.json()
-#             except ValueError:
-#                 error_detail = exc.response.text
-
-#             raise APIClientError(
-#                 f"Backend returned HTTP "
-#                 f"{exc.response.status_code}: {error_detail}"
-#             ) from exc
-
-#         except httpx.RequestError as exc:
-#             raise APIClientError(
-#                 f"Unable to connect to FastAPI backend: {exc}"
-#             ) from exc
-    
-# ------------------- v0 -------------------
-# def send_chat_message(
-#     question: str,
-#     provider: str,
-#     conversation_id: str | None = None,
-# ) -> dict:
-#     """
-#     Send a chat request to the FastAPI backend.
-
-#     Args:
-#         question: User's question.
-#         provider: LLM provider ('openai' or 'anthropic').
-#         conversation_id: Provider-specific conversation ID.
-
-#     Returns:
-#         Chat API response as a dictionary.
-#     """
-
-#     payload = {
-#         "question": question,
-#         "provider": provider,
-#     }
-
-#     if conversation_id:
-#         payload["conversation_id"] = conversation_id
-
-#     try:
-#         response = httpx.post(
-#             CHAT_ENDPOINT,
-#             json=payload,
-#             timeout=REQUEST_TIMEOUT,
-#         )
-
-#         response.raise_for_status()
-
-#         return response.json()
-
-#     except httpx.HTTPStatusError as exc:
-#         try:
-#             error_detail = exc.response.json()
-#         except ValueError:
-#             error_detail = exc.response.text
-
-#         raise APIClientError(
-#             f"Backend returned HTTP {exc.response.status_code}: "
-#             f"{error_detail}"
-#         ) from exc
-
-#     except httpx.RequestError as exc:
-#         raise APIClientError(
-#             f"Unable to connect to FastAPI backend at "
-#             f"{CHAT_ENDPOINT}. Is the backend running? Details: {exc}"
-#         ) from exc
+    except httpx.RequestError as exc:
+        raise APIClientError(
+            f"Unable to connect to document upload API: {exc}"
+        ) from exc
