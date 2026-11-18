@@ -16,6 +16,7 @@ from app.rag.ingestion_service import DocumentIngestionService
 from app.rag.embeddings import EmbeddingService
 from app.rag.vector_store import FAISSVectorStore
 from app.rag.retrieval_service import SemanticRetrievalService
+from app.rag.orchestrator import RAGOrchestrator
 
 @lru_cache
 def get_settings() -> Settings:
@@ -120,4 +121,36 @@ def get_semantic_retrieval_service() -> SemanticRetrievalService:
     return SemanticRetrievalService(
         embedding_service=get_embedding_service(),
         vector_store=get_vector_store(),
+    )
+
+@lru_cache
+def get_rag_orchestrator() -> RAGOrchestrator:
+    settings = get_settings()
+
+    providers = {}
+
+    if settings.foundry_openai_endpoint and settings.foundry_openai_api_key:
+        providers["openai"] = OpenAIProvider(
+            endpoint=settings.foundry_openai_endpoint,
+            api_key=settings.foundry_openai_api_key,
+            deployment=settings.foundry_openai_deployment,
+        )
+
+    if settings.foundry_anthropic_endpoint and settings.foundry_anthropic_api_key:
+        providers["anthropic"] = AnthropicProvider(
+            endpoint=settings.foundry_anthropic_endpoint,
+            api_key=settings.foundry_anthropic_api_key,
+            deployment=settings.foundry_anthropic_deployment,
+        )
+
+    if not providers:
+        raise RuntimeError(
+            "No Foundry providers configured. Check your .env settings."
+        )
+
+    registry = LLMProviderRegistry(providers)
+
+    return RAGOrchestrator(
+        retrieval_service=get_semantic_retrieval_service(),
+        provider_registry=registry,
     )

@@ -64,9 +64,21 @@ class AnthropicProvider:
             # ),
             request_id=getattr(response, "_request_id", None),
             response_id=response.id,
-            status="success",
+            status=(
+                "success"
+                if (
+                    answer.strip()
+                    and finish_reason in {
+                        "end_turn",
+                        "stop_sequence",
+                        "max_tokens",
+                        "refusal",
+                    }
+                )
+                else "error"
+            ),
             finish_reason=finish_reason,
             is_truncated=is_truncated,
-            incomplete_reason=incomplete_reason,
+            incomplete_reason=incomplete_reason,            
         )
 

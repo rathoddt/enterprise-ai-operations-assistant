@@ -20,6 +20,10 @@ CHAT_ENDPOINT = (
     f"{API_BASE_URL.rstrip('/')}/api/v1/assistant/chat"
 )
 
+RAG_QA_ENDPOINT = (
+    f"{API_BASE_URL.rstrip('/')}/api/v1/assistant/qa"
+)
+
 DOCUMENT_UPLOAD_ENDPOINT = (
     f"{API_BASE_URL.rstrip('/')}/api/v1/documents/upload"
 )
@@ -167,4 +171,51 @@ def upload_document(
     except httpx.RequestError as exc:
         raise APIClientError(
             f"Unable to connect to document upload API: {exc}"
+        ) from exc
+
+
+def send_rag_qa(
+    question: str,
+    provider: str,
+    system_prompt: str,
+    document_id: str | None = None,
+    top_k: int = 5,
+    min_score: float = 0.2,
+) -> dict:
+    """Send a document-grounded RAG question to FastAPI."""
+
+    payload = {
+        "question": question,
+        "provider": provider,
+        "system_prompt": system_prompt,
+        "top_k": top_k,
+        "min_score": min_score,
+    }
+
+    if document_id:
+        payload["document_id"] = document_id
+
+    try:
+        response = httpx.post(
+            RAG_QA_ENDPOINT,
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.HTTPStatusError as exc:
+        try:
+            error_detail = exc.response.json()
+        except ValueError:
+            error_detail = exc.response.text
+
+        raise APIClientError(
+            f"HTTP {exc.response.status_code}: {error_detail}"
+        ) from exc
+
+    except httpx.RequestError as exc:
+        raise APIClientError(
+            f"Unable to connect to RAG QA API: {exc}"
         ) from exc

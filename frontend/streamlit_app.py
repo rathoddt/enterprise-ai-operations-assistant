@@ -1,23 +1,3 @@
-
-# # import streamlit as st
-
-# # from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# # from app.models.schemas import DEFAULT_SYSTEM_PROMPT
-
-# import sys
-# from pathlib import Path
-
-# import streamlit as st
-
-# from concurrent.futures import ThreadPoolExecutor, as_completed
-# import logging
-# from frontend.api_client import (
-#     send_chat_message,
-#     upload_document,
-#     APIClientError,
-# )
-
 import sys
 from pathlib import Path
 import logging
@@ -32,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from frontend.api_client import (
     send_chat_message,
+    send_rag_qa,
     upload_document,
     APIClientError,
 )
@@ -137,6 +118,42 @@ def display_response(message: dict):
         return
 
     st.markdown(message["content"])
+
+    sources = message.get("sources") or []
+
+    if sources:
+        st.divider()
+        st.markdown("**📚 Retrieved document sources**")
+
+        for source in sources:
+            source_id = source.get("source_id", "Unknown")
+
+            with st.expander(
+                f"{source_id} — "
+                f"{source.get('document_id', 'Unknown document')}"
+            ):
+                st.write(
+                    "**Chunk ID:**",
+                    source.get("chunk_id", "Unknown"),
+                )
+
+                st.write(
+                    "**Chunk index:**",
+                    source.get("chunk_index"),
+                )
+
+                st.write(
+                    "**Page number:**",
+                    source.get("page_number") or "Not available",
+                )
+
+                st.write(
+                    "**Similarity score:**",
+                    source.get("similarity_score"),
+                )
+
+                st.write("**Retrieved text:**")
+                st.write(source.get("excerpt", ""))
 
     if not metadata:
         return
@@ -259,7 +276,17 @@ def call_provider(
     system_prompt: str,
     user_prompt: str,
     conversation_id: str | None,
+    rag_mode: bool = False,
 ):
+
+    if rag_mode:
+        return send_rag_qa(
+            question=user_prompt,
+            provider=provider_key,
+            system_prompt=system_prompt,
+            top_k=5,
+            min_score=0.2,
+        )
 
     return send_chat_message(
         question=user_prompt,
@@ -267,7 +294,6 @@ def call_provider(
         system_prompt=system_prompt,
         conversation_id=conversation_id,
     )
-
 # ==================================================
 # HELPER: SAVE PROVIDER RESULT
 # ==================================================
@@ -293,7 +319,15 @@ def save_provider_result(
             "No answer returned.",
         ),
 
-        "metadata": result.get("metadata") or {},
+        "metadata": (
+            result.get("metadata")
+            or result.get("llm_metadata")
+            or {}
+        ),
+
+        "sources": result.get("sources") or [],
+
+        "rag_metadata": result.get("rag_metadata") or {},        
 
     })
 
@@ -328,6 +362,7 @@ def execute_requests(
     selected_providers: list,
     system_prompt: str,
     user_prompt: str,
+    rag_mode: bool = False,
 ):
 
     # All Streamlit session state access happens
@@ -369,6 +404,7 @@ def execute_requests(
                     system_prompt,
                     user_prompt,
                     conversation_ids[provider_key],
+                    rag_mode=rag_mode,                    
                 ): provider_key
 
                 for provider_key in selected_providers
@@ -432,154 +468,156 @@ st.caption(
 
 st.divider()
 
+
+
 # ==================================================
-# DOCUMENT UPLOAD AND INGESTION
+# CONFIGURATION AND USER PROMPT
 # ==================================================
 
-st.subheader("📚 Document Knowledge Base")
-
-st.caption(
-    "Upload PDF, DOCX, TXT or Markdown documents "
-    "to extract, chunk and generate embeddings."
+config_col, prompt_col = st.columns(
+    [1, 2],
+    gap="large",
 )
 
-uploaded_file = st.file_uploader(
-    "Choose a document",
-    type=["pdf", "docx", "txt", "md"],
-    help="Maximum file size: 20 MB",
-)
-
-if st.button(
-    "Upload and Index Document",
-    disabled=uploaded_file is None,
-    type="primary",
-):
-
-    try:
-        with st.spinner(
-            "Uploading document and generating embeddings..."
-        ):
-
-            result = upload_document(
-                filename=uploaded_file.name,
-                file_content=uploaded_file.getvalue(),
-            )
-
-        st.success(
-            result.get(
-                "message",
-                "Document uploaded and processed successfully.",
-            )
-        )
-
-        document = result.get("document") or {}
-        chunks = result.get("chunks") or []
-
-        if document:
-            with st.expander("Document details"):
-                st.json(document)
-
-        metric_col1, metric_col2, metric_col3 = st.columns(3)
-
-        with metric_col1:
-            st.metric("Chunks created", len(chunks))
-
-        with metric_col2:
-            st.metric(
-                "Embeddings generated",
-                result.get("embedding_count", 0),
-            )
-
-        with metric_col3:
-            st.metric(
-                "Embedding dimensions",
-                result.get("embedding_dimensions", 0),
-            )
-
-    except APIClientError as exc:
-        st.error(f"Document upload failed: {exc}")
-
-    except Exception as exc:
-        logger.exception("Unexpected document upload error")
-        st.error(f"Unexpected error: {exc}")
-
 # ==================================================
-# SYSTEM PROMPT CONFIGURATION
+# COLUMN 1: SYSTEM PROMPT + DOCUMENT UPLOAD
 # ==================================================
 
-st.subheader("⚙️ System Prompt")
+with config_col:
 
+    st.subheader("⚙️ System Prompt")
 
-system_prompt = st.text_area(
-    "Define model behaviour and response instructions",
-    height=120,
-    max_chars=8000,
-    key="system_prompt",
-)
-
-st.caption(
-    "The same system prompt is applied to every selected model."
-)
-
-
-# ==================================================
-# USER PROMPT AND SUBMISSION CONTROLS
-# ==================================================
-
-st.subheader("💬 User Prompt")
-
-with st.form("user_prompt_form"):
-
-    user_prompt = st.text_area(
-
-        "Enter your question or task",
-
-        placeholder=(
-            "Example: Explain RAG architecture "
-            "for an enterprise application."
-        ),
-
-        height=110,
-
-        max_chars=2000,
-
-        key="user_prompt",
-
+    system_prompt = st.text_area(
+        "Define model behaviour and response instructions",
+        height=180,
+        max_chars=8000,
+        key="system_prompt",
     )
 
-    button_col1, button_col2, button_col3 = st.columns(3)
+    st.caption(
+        "The same system prompt is applied to every selected model."
+    )
 
-    with button_col1:
+    st.divider()
 
-        compare_button = st.form_submit_button(
+    st.subheader("📚 Document Knowledge Base")
 
-            "⚖️ Compare Both Models",
+    st.caption(
+        "Upload PDF, DOCX, TXT or Markdown documents "
+        "to extract, chunk and generate embeddings."
+    )
 
-            type="primary",
+    uploaded_file = st.file_uploader(
+        "Choose a document",
+        type=["pdf", "docx", "txt", "md"],
+        help="Maximum file size: 20 MB",
+    )
 
-            use_container_width=True,
+    if st.button(
+        "Upload and Index Document",
+        disabled=uploaded_file is None,
+        type="primary",
+        use_container_width=True,
+    ):
 
+        try:
+            with st.spinner(
+                "Uploading document and generating embeddings..."
+            ):
+                result = upload_document(
+                    filename=uploaded_file.name,
+                    file_content=uploaded_file.getvalue(),
+                )
+
+            st.success(
+                result.get(
+                    "message",
+                    "Document uploaded and processed successfully.",
+                )
+            )
+
+            document = result.get("document") or {}
+            chunks = result.get("chunks") or []
+
+            st.caption(
+                f"Chunks: {len(chunks)} | "
+                f"Embeddings: {result.get('embedding_count', 0)} | "
+                f"Dimensions: {result.get('embedding_dimensions', 0)}"
+            )
+
+            if document:
+                with st.expander("Document details"):
+                    st.json(document)
+
+        except APIClientError as exc:
+            st.error(f"Document upload failed: {exc}")
+
+        except Exception as exc:
+            logger.exception("Unexpected document upload error")
+            st.error(f"Unexpected error: {exc}")
+
+
+# ==================================================
+# COLUMN 2: USER PROMPT AND SUBMISSION CONTROLS
+# ==================================================
+
+with prompt_col:
+
+    request_mode = st.radio(
+        "Request mode",
+        options=["Normal Chat", "Document RAG"],
+        horizontal=True,
+        key="request_mode",
+    )
+
+    rag_mode = request_mode == "Document RAG"
+
+    if rag_mode:
+        st.caption(
+            "Answers will be grounded in your indexed documents. "
+            "All documents are searched unless a document filter "
+            "is supplied."
+        )
+    else:
+        st.caption(
+            "Answers will use the normal LLM chat workflow."
         )
 
-    with button_col2:
+    st.subheader("💬 User Prompt")
 
-        openai_button = st.form_submit_button(
+    with st.form("user_prompt_form"):
 
-            "🟢 GPT-5 Only",
-
-            use_container_width=True,
-
+        user_prompt = st.text_area(
+            "Enter your question or task",
+            placeholder=(
+                "Example: What are my primary skills? "
+                "Refer to the uploaded resume."
+            ),
+            height=180,
+            max_chars=2000,
+            key="user_prompt",
         )
 
-    with button_col3:
+        button_col1, button_col2, button_col3 = st.columns(3)
 
-        anthropic_button = st.form_submit_button(
+        with button_col1:
+            compare_button = st.form_submit_button(
+                "⚖️ Compare Both Models",
+                type="primary",
+                use_container_width=True,
+            )
 
-            "🔵 Claude Only",
+        with button_col2:
+            openai_button = st.form_submit_button(
+                "🟢 GPT-5 Only",
+                use_container_width=True,
+            )
 
-            use_container_width=True,
-
-        )
+        with button_col3:
+            anthropic_button = st.form_submit_button(
+                "🔵 Claude Only",
+                use_container_width=True,
+            )
 
 
 # ==================================================
@@ -623,12 +661,12 @@ if selected_providers:
         )
 
     else:
-
         execute_requests(
             selected_providers=selected_providers,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-        )
+            rag_mode=rag_mode,
+        )        
 
         st.rerun()
 

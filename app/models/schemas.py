@@ -95,3 +95,90 @@ class RetrievalResponse(BaseModel):
     question: str
     total_results: int
     results: list[RetrievedChunk]
+
+
+# ==================================================
+# RAG QUESTION AND ANSWER SCHEMAS
+# ==================================================
+
+class RAGQARequest(BaseModel):
+    """Request model for document-grounded question answering."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(
+        min_length=3,
+        max_length=2000,
+        description="Question to answer using indexed documents",
+    )
+
+    provider: Literal["openai", "anthropic"] = "openai"
+
+    document_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional document ID. If omitted, "
+            "search all indexed documents."
+        ),
+    )
+
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+    )
+
+    min_score: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+    )
+
+    system_prompt: str = Field(
+        default=DEFAULT_SYSTEM_PROMPT,
+        max_length=8000,
+    )
+
+
+class RAGSource(BaseModel):
+    """Source reference for a retrieved document chunk."""
+
+    source_id: str
+    document_id: str
+    chunk_id: str
+    chunk_index: int
+    page_number: int | None = None
+    similarity_score: float
+    excerpt: str
+
+
+class RAGMetadata(BaseModel):
+    """Metadata describing the retrieval operation."""
+
+    retrieval_status: Literal[
+        "success",
+        "no_relevant_context",
+    ]
+
+    retrieved_chunks: int
+    top_k: int
+    min_score: float
+
+
+class RAGQAResponse(BaseModel):
+    """Response from the RAG question-answering pipeline."""
+
+    question: str
+
+    answer: str
+
+    status: Literal[
+        "success",
+        "insufficient_context",
+    ]
+
+    sources: list[RAGSource] = Field(default_factory=list)
+
+    rag_metadata: RAGMetadata
+
+    llm_metadata: LLMMetadata | None = None
